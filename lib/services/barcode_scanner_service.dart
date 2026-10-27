@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
@@ -8,6 +9,7 @@ import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart
 import 'package:permission_handler/permission_handler.dart';
 
 import '../models/detected_barcode.dart';
+import '../utils/barcode_formats.dart';
 import '../utils/constants.dart';
 import '../utils/luminance.dart';
 
@@ -158,18 +160,12 @@ class MlKitBarcodeSource implements BarcodeDetectionSource {
       back,
       kCameraResolution,
       enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.nv21, // what ML Kit wants on Android
+      imageFormatGroup: Platform.isAndroid
+          ? ImageFormatGroup.nv21
+          : ImageFormatGroup.bgra8888,
     );
     _camera = controller;
-    _scanner = BarcodeScanner(
-      formats: [
-        BarcodeFormat.code128,
-        BarcodeFormat.dataMatrix,
-        BarcodeFormat.qrCode,
-        BarcodeFormat.ean13,
-        BarcodeFormat.ean8,
-      ],
-    );
+    _scanner = BarcodeScanner(formats: kMlKitScanFormats);
 
     try {
       await controller.initialize();
@@ -362,20 +358,7 @@ class MlKitBarcodeSource implements BarcodeDetectionSource {
       );
       if (rotation == null) return;
 
-      // NV21 requires all planes concatenated (Y + UV) into one buffer.
-      // Passing only planes.first (Y only) gives ML Kit a truncated image
-      // with no chroma data, so it cannot decode any barcode.
-      final allBytes = _concatenatePlanes(image.planes);
-
-      final input = InputImage.fromBytes(
-        bytes: allBytes,
-        metadata: InputImageMetadata(
-          size: Size(image.width.toDouble(), image.height.toDouble()),
-          rotation: rotation,
-          format: InputImageFormat.nv21,
-          bytesPerRow: yPlane.bytesPerRow,
-        ),
-      );
+      final input = _toInputImage(image, rotation, yPlane);
 
       // Barcode coordinates come back in the upright (rotated) image.
       final quarterTurn =
@@ -407,7 +390,7 @@ class MlKitBarcodeSource implements BarcodeDetectionSource {
         );
       }
 
-      final picked = pickCentermost(detected);
+      final picked = pickBatchBarcode(detected);
       if (picked != null && kLogRawBarcodes) {
         debugPrint(
           'SCAN raw: ${picked.rawValue.replaceAll('\u001D', '<GS>')} '
@@ -449,21 +432,28 @@ class MlKitBarcodeSource implements BarcodeDetectionSource {
     return latin1.decode(bytes, allowInvalid: true);
   }
 
-  String? _formatName(BarcodeFormat format) {
-    switch (format) {
-      case BarcodeFormat.code128:
-        return 'code128';
-      case BarcodeFormat.dataMatrix:
-        return 'dataMatrix';
-      case BarcodeFormat.qrCode:
-        return 'qrCode';
-      case BarcodeFormat.ean13:
-        return 'ean13';
-      case BarcodeFormat.ean8:
-        return 'ean8';
-      default:
-        return null;
-    }
+  String? _formatName(BarcodeFormat format) => mlKitFormatName(format);
+
+  InputImage _toInputImage(
+    CameraImage image,
+    InputImageRotation rotation,
+    Plane yPlane,
+  ) {
+    final format = Platform.isAndroid
+        ? InputImageFormat.nv21
+        : InputImageFormat.bgra8888;
+    final bytes = Platform.isAndroid
+        ? _concatenatePlanes(image.planes)
+        : yPlane.bytes;
+    return InputImage.fromBytes(
+      bytes: bytes,
+      metadata: InputImageMetadata(
+        size: Size(image.width.toDouble(), image.height.toDouble()),
+        rotation: rotation,
+        format: format,
+        bytesPerRow: yPlane.bytesPerRow,
+      ),
+    );
   }
 
   /// Concatenates all image planes into a single byte buffer.

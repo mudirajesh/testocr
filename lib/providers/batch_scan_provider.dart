@@ -385,7 +385,7 @@ class BatchScanProvider extends ChangeNotifier {
       raw,
       barcodeFormat: isRetail
           ? (consensus.format == 'ean13' ? kFormatEan13 : kFormatEan8)
-          : null,
+          : consensus.format,
       // Consensus was reached, so internal batch spaces are consistent.
       preserveBatchSpaces: consensus.reachedConsensus,
     );
@@ -401,14 +401,10 @@ class BatchScanProvider extends ChangeNotifier {
       isValid: parse.isValid,
     );
 
-    // Nothing GS1-like in it at all (a plain QR, a URL, ...): skip it. It is
-    // listed in the session so the item count stays honest.
-    final hasGs1Fields =
-        parse.batchNumber != null ||
-        parse.gtin != null ||
-        parse.expiryYymmdd != null ||
-        parse.serialNumber != null;
-    if (!hasGs1Fields) {
+    // Only a barcode that yields a batch/lot number is kept. Retail EAN,
+    // GTIN-only codes and URLs are skipped so the session stays lot-focused.
+    final batch = parse.batchNumber;
+    if (batch == null || batch.isEmpty) {
       _addItem(BatchScanItem(record, state: BatchItemState.unrecognised));
       if (!_messages.isClosed) _messages.add('Unrecognised barcode · Skipped');
       return;

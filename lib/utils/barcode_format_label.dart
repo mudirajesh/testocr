@@ -11,6 +11,16 @@ String barcodeFormatLabel(String format, bool isGs1) {
       return 'DataMatrix';
     case 'qrCode':
       return 'QR';
+    case 'code39':
+      return 'Code 39';
+    case 'code93':
+      return 'Code 93';
+    case 'itf':
+      return 'ITF';
+    case 'pdf417':
+      return 'PDF417';
+    case 'codabar':
+      return 'Codabar';
     case 'ean13':
       return kFormatEan13;
     case 'ean8':

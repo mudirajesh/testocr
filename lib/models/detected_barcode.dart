@@ -1,3 +1,5 @@
+import '../utils/validators.dart';
+
 /// One barcode seen in a camera frame. Pure Dart.
 class DetectedBarcode {
   const DetectedBarcode({
@@ -10,7 +12,7 @@ class DetectedBarcode {
 
   final String rawValue;
 
-  /// "code128", "dataMatrix", "qrCode", "ean13" or "ean8".
+  /// "code128", "dataMatrix", "qrCode", "code39", "itf", ...
   final String format;
 
   /// Barcode centre, normalized 0..1 in the upright (rotated) image.
@@ -39,4 +41,19 @@ DetectedBarcode? pickCentermost(List<DetectedBarcode> items) {
     }
   }
   return best;
+}
+
+/// Prefers a barcode that carries a batch/lot number. Retail EAN/UPC and
+/// URL payloads are ignored when a lot code is also in view.
+DetectedBarcode? pickBatchBarcode(List<DetectedBarcode> items) {
+  if (items.isEmpty) return null;
+  final withBatch = items
+      .where((item) => looksLikeBatchPayload(item.rawValue))
+      .toList();
+  if (withBatch.isNotEmpty) return pickCentermost(withBatch);
+  final nonRetail = items
+      .where((item) => item.format != 'ean13' && item.format != 'ean8')
+      .toList();
+  if (nonRetail.isNotEmpty) return pickCentermost(nonRetail);
+  return pickCentermost(items);
 }

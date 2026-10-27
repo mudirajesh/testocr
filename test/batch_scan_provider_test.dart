@@ -174,6 +174,21 @@ void main() {
       expect(provider.items.length, 2);
     });
 
+    scenario('a standalone lot code is saved as the batch number', (
+      async,
+      provider,
+      source,
+      db,
+    ) {
+      startBatch(async, provider);
+      feedTimes(async, source, 'BN2024X981', 3, format: 'code39');
+
+      expect(provider.savedCount, 1);
+      expect(provider.items.single.record.batchNumber, 'BN2024X981');
+      expect(provider.items.single.record.isValid, isTrue);
+      expect(db.insertCalls, 1);
+    });
+
     scenario('unrecognised barcodes are skipped, listed, not saved', (
       async,
       provider,

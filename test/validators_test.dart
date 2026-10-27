@@ -86,6 +86,29 @@ void main() {
     });
   });
 
+  group('isStandaloneBatch / looksLikeBatchPayload', () {
+    test('accepts typical lot codes', () {
+      expect(isStandaloneBatch('BN2024X981'), isTrue);
+      expect(isStandaloneBatch('LOT-2024.A1'), isTrue);
+      expect(looksLikeBatchPayload('BN2024X981'), isTrue);
+      expect(looksLikeBatchPayload('01089012345678901726123110BN2024X981'), isTrue);
+      expect(looksLikeBatchPayload('(01)08901234567890(10)BN2024X981'), isTrue);
+    });
+
+    test('rejects URLs, retail GTINs and GS1 without a batch', () {
+      expect(isStandaloneBatch('https://example.com'), isFalse);
+      expect(isStandaloneBatch('8901234567890'), isFalse);
+      expect(isStandaloneBatch('0108901234567890'), isFalse);
+      expect(looksLikeBatchPayload('https://example.com'), isFalse);
+      expect(looksLikeBatchPayload('0108901234567890'), isFalse);
+    });
+
+    test('a lot that starts with digits that look like an AI is still a lot', () {
+      expect(isStandaloneBatch('2024X981'), isTrue);
+      expect(isStandaloneBatch('17A2001'), isTrue);
+    });
+  });
+
   group('isDigitsOnly / normalizeWhitespaceCommon', () {
     test('isDigitsOnly', () {
       expect(isDigitsOnly('0123'), isTrue);

@@ -55,6 +55,41 @@ class OcrService {
     caseSensitive: false,
   );
 
+  static final _batchLabelOnly = RegExp(
+    r'^(?:BATCH(?:\s*NO|\s*#)?|LOT(?:\s*NO|\s*#)?|B\.?\s*N\.?|BN)[:\s\-#]*$',
+    caseSensitive: false,
+  );
+
+  static String? _firstGroup(RegExp pattern, String text) {
+    final match = pattern.firstMatch(text);
+    if (match == null || match.groupCount < 1) return null;
+    final val = match.group(1)?.trim();
+    if (val == null || val.isEmpty) return null;
+    return val;
+  }
+
+  static String? _firstGroupIn(List<String> lines, RegExp pattern) {
+    for (final text in lines) {
+      final val = _firstGroup(pattern, text);
+      if (val != null) return val;
+    }
+    return null;
+  }
+
+  /// Label and value on the same line, or the value on the following line.
+  static String? _batchFromLines(List<String> lines) {
+    for (var i = 0; i < lines.length; i++) {
+      final text = lines[i];
+      final val = _firstGroup(_batchPattern, text);
+      if (val != null && val.length >= 3) return val;
+      if (_batchLabelOnly.hasMatch(text) && i + 1 < lines.length) {
+        final next = lines[i + 1].replaceAll(RegExp(r'[^A-Za-z0-9.\-/]'), '');
+        if (next.length >= 3 && next.length <= 20) return next;
+      }
+    }
+    return null;
+  }
+
   /// Performs text recognition on an image file.
   Future<OcrResult> processImage(String imagePath) async {
     if (!File(imagePath).existsSync()) {
@@ -73,39 +108,19 @@ class OcrService {
       String? expiryDate;
       String? strength;
 
-      // Scan all text blocks and lines
+      batchNumber = _firstGroup(_batchPattern, fullText);
+      expiryDate = _firstGroup(_expiryPattern, fullText);
+      strength = _firstGroup(_strengthPattern, fullText);
+
+      final lines = <String>[];
       for (final block in recognized.blocks) {
         for (final line in block.lines) {
-          final text = line.text.trim();
-
-          // 1. Check for batch number
-          if (batchNumber == null) {
-            final match = _batchPattern.firstMatch(text);
-            if (match != null && match.groupCount >= 1) {
-              final val = match.group(1)?.trim();
-              if (val != null && val.length >= 3) {
-                batchNumber = val;
-              }
-            }
-          }
-
-          // 2. Check for expiry date
-          if (expiryDate == null) {
-            final match = _expiryPattern.firstMatch(text);
-            if (match != null && match.groupCount >= 1) {
-              expiryDate = match.group(1)?.trim();
-            }
-          }
-
-          // 3. Check for strength
-          if (strength == null) {
-            final match = _strengthPattern.firstMatch(text);
-            if (match != null && match.groupCount >= 1) {
-              strength = match.group(1)?.trim();
-            }
-          }
+          lines.add(line.text.trim());
         }
       }
+      batchNumber ??= _batchFromLines(lines);
+      expiryDate ??= _firstGroupIn(lines, _expiryPattern);
+      strength ??= _firstGroupIn(lines, _strengthPattern);
 
       // 4. Medicine lookup from full recognized text
       final matchedMedicine = _lookup.lookup(text: fullText);

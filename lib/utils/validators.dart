@@ -35,6 +35,44 @@ bool isValidGs1Date(String yymmdd) {
 
 bool isValidBatch(String v) => v.isNotEmpty && v.length <= 20;
 
+final _standaloneBatchUrl = RegExp(r'^(https?:|www\.)', caseSensitive: false);
+final _standaloneAllDigits = RegExp(r'^\d+$');
+final _standaloneParenAi = RegExp(r'^\(\d{2,4}\)');
+final _standaloneHasAlnum = RegExp(r'[A-Za-z0-9]');
+final _standaloneGs1Gtin = RegExp(r'^01\d{14}');
+final _standaloneGs1Sscc = RegExp(r'^00\d{18}');
+final _gs1BatchMarker = RegExp(
+  r'(?:\(10\)|[\u001D|]10|[^\d]10|^10)[A-Za-z0-9.\-]',
+);
+final _gs1ConcatenatedBatch = RegExp(r'01\d{14}(?:17\d{6})?10[A-Za-z0-9.\-]');
+
+/// A barcode that is itself a lot/batch code, not a GS1 element string
+/// and not a retail GTIN/EAN/UPC.
+bool isStandaloneBatch(String v) {
+  if (v.isEmpty || v.length < 2 || v.length > 20) return false;
+  if (!_standaloneHasAlnum.hasMatch(v)) return false;
+  if (_standaloneBatchUrl.hasMatch(v)) return false;
+  if (_standaloneParenAi.hasMatch(v)) return false;
+  if (_standaloneGs1Gtin.hasMatch(v) || _standaloneGs1Sscc.hasMatch(v)) {
+    return false;
+  }
+  if (_standaloneAllDigits.hasMatch(v) &&
+      (v.length == 8 || v.length == 12 || v.length == 13 || v.length == 14)) {
+    return false;
+  }
+  return true;
+}
+
+/// True when [raw] is a GS1 string that carries AI 10, or a standalone lot.
+bool looksLikeBatchPayload(String raw) {
+  final v = raw.trim();
+  if (v.isEmpty) return false;
+  if (_gs1BatchMarker.hasMatch(v) || _gs1ConcatenatedBatch.hasMatch(v)) {
+    return true;
+  }
+  return isStandaloneBatch(v);
+}
+
 /// Warning (never an error) when a batch holds characters outside the common
 /// set. GS1 allows more, and real lots do contain "/" or "_".
 String? batchCharWarning(String v) {

@@ -497,12 +497,34 @@ void main() {
   });
 
   group('issues', () {
-    scenario('include parser warnings', (async, provider, source, db) {
+    scenario('a GTIN-only barcode needs review because there is no batch', (
+      async,
+      provider,
+      source,
+      db,
+    ) {
       startScanning(async, provider);
       feedTimes(async, source, gtinOnlyRaw, 3);
 
-      expect(provider.status, ScannerStatus.success);
+      expect(provider.status, ScannerStatus.needsReview);
+      expect(provider.result!.batchNumber, isNull);
+      expect(provider.result!.isValid, isFalse);
       expect(provider.issues, contains('No batch/lot number in this barcode'));
+    });
+
+    scenario('a standalone lot code is saved as the batch number', (
+      async,
+      provider,
+      source,
+      db,
+    ) {
+      startScanning(async, provider);
+      feedTimes(async, source, 'BN2024X981', 3, format: 'code39');
+
+      expect(provider.status, ScannerStatus.success);
+      expect(provider.result!.batchNumber, 'BN2024X981');
+      expect(provider.result!.isValid, isTrue);
+      expect(db.rows.single.batchNumber, 'BN2024X981');
     });
 
     scenario('include the low-confidence line on timeout', (
@@ -519,7 +541,6 @@ void main() {
         provider.issues.first,
         'Low confidence: only 1 of 5 frames agreed',
       );
-      expect(provider.issues, contains('Unrecognised barcode format'));
     });
 
     scenario('are empty before any result', (async, provider, source, db) {

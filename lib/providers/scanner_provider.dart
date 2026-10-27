@@ -20,6 +20,7 @@ import '../services/medicine_lookup_service.dart';
 import '../services/ocr_service.dart';
 import '../services/zoom_advisor.dart';
 import '../utils/barcode_format_label.dart';
+import '../utils/barcode_formats.dart';
 import '../utils/constants.dart';
 import '../utils/gs1_constants.dart';
 import '../utils/scan_metrics.dart';
@@ -351,30 +352,40 @@ class ScannerProvider extends ChangeNotifier {
 
     final persistentPath = await _persistPhoto(imagePath);
 
-    // 1. Try Barcode scanning first
-    final scanner = BarcodeScanner(
-      formats: [
-        BarcodeFormat.code128,
-        BarcodeFormat.dataMatrix,
-        BarcodeFormat.qrCode,
-        BarcodeFormat.ean13,
-        BarcodeFormat.ean8,
-      ],
-    );
+    // 1. Try Barcode scanning first. Only formats that can carry a batch
+    // number are enabled, so an EAN product code is never chosen over a lot.
+    final scanner = BarcodeScanner(formats: kMlKitScanFormats);
 
     List<Barcode> barcodes = [];
     try {
-      barcodes = await scanner.processImage(InputImage.fromFilePath(persistentPath));
+      barcodes = await scanner.processImage(
+        InputImage.fromFilePath(persistentPath),
+      );
     } catch (e) {
       debugPrint('Barcode scanner on file failed: $e');
     } finally {
       await scanner.close();
     }
 
-    if (barcodes.isNotEmpty) {
-      final b = barcodes.first;
-      final raw = b.rawValue ?? '';
-      final fmt = _formatFromMlKit(b.format);
+    final detected = <DetectedBarcode>[];
+    for (final barcode in barcodes) {
+      final format = mlKitFormatName(barcode.format);
+      final raw = barcode.rawValue;
+      if (format == null || raw == null || raw.isEmpty) continue;
+      detected.add(
+        DetectedBarcode(
+          rawValue: raw,
+          format: format,
+          centerX: 0.5,
+          centerY: 0.5,
+        ),
+      );
+    }
+    final picked = pickBatchBarcode(detected);
+
+    if (picked != null) {
+      final raw = picked.rawValue;
+      final fmt = picked.format;
       final consensus = ConsensusResult(
         raw: raw,
         format: fmt,
@@ -383,7 +394,7 @@ class ScannerProvider extends ChangeNotifier {
         reachedConsensus: true,
       );
 
-      final parse = _parser.parse(raw);
+      final parse = _parser.parse(raw, barcodeFormat: fmt);
       String? ocrBatch;
       String? ocrExpiry;
       String? ocrMedicine;
@@ -443,23 +454,6 @@ class ScannerProvider extends ChangeNotifier {
       await _source.resume();
       if (_disposed) return;
       _setStatus(ScannerStatus.scanning);
-    }
-  }
-
-  String _formatFromMlKit(BarcodeFormat format) {
-    switch (format) {
-      case BarcodeFormat.code128:
-        return 'code128';
-      case BarcodeFormat.dataMatrix:
-        return 'dataMatrix';
-      case BarcodeFormat.qrCode:
-        return 'qrCode';
-      case BarcodeFormat.ean13:
-        return 'ean13';
-      case BarcodeFormat.ean8:
-        return 'ean8';
-      default:
-        return 'code128';
     }
   }
 
@@ -892,7 +886,7 @@ class ScannerProvider extends ChangeNotifier {
       picked.raw,
       barcodeFormat: isRetail
           ? (picked.format == 'ean13' ? kFormatEan13 : kFormatEan8)
-          : null,
+          : picked.format,
       preserveBatchSpaces: reached,
     );
 
@@ -915,7 +909,7 @@ class ScannerProvider extends ChangeNotifier {
       expiryDate: expiry,
       serialNumber: parse.serialNumber,
       confidenceScore: picked.confidence,
-      isValid: (parse.isValid || (batch != null && batch.isNotEmpty)) && reached,
+      isValid: reached && batch != null && batch.isNotEmpty,
       imagePath: imagePath,
       medicineName: medName,
       strength: medStrength,

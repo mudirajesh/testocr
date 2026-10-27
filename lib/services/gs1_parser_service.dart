@@ -121,6 +121,38 @@ class Gs1ParserService {
     // Step 6: validate.
     _validate(fields, byAi, warnings, errors);
 
+    // A Code 39 / ITF / Code 128 lot code is often just the batch itself.
+    // Walking it as GS1 can invent AIs from digit pairs (e.g. "20" in
+    // BN2024X981, or a leading "10"). If the payload looks like a lot and
+    // is not a full GS1 element string, keep the whole string as the batch.
+    if (_acceptsStandaloneBatch(barcodeFormat) && isStandaloneBatch(body)) {
+      warnings.removeWhere(
+        (w) =>
+            w.startsWith('Unknown or unparsable data') ||
+            w.startsWith('Unparsed data ignored') ||
+            w.startsWith('Duplicate AI') ||
+            w.startsWith('AI ') ||
+            w.startsWith('No batch/lot number'),
+      );
+      errors.clear();
+      corrections.clear();
+      fields.clear();
+      byAi.clear();
+      ambiguousBatchIndices.clear();
+      final batch = preserveBatchSpaces
+          ? body
+          : body.replaceAll(_whitespace, '');
+      if (isValidBatch(batch)) {
+        _collectAmbiguous(batch, ambiguousBatchIndices, warnings);
+        final warning = batchCharWarning(batch);
+        if (warning != null) warnings.add(warning);
+        fields.add(
+          Gs1Field(ai: kAiBatch, name: kAiTable[kAiBatch]!.name, value: batch),
+        );
+        byAi[kAiBatch] = batch;
+      }
+    }
+
     final isGs1 = fields.isNotEmpty;
     if (!isGs1) errors.add('Unrecognised barcode format');
 
@@ -139,6 +171,15 @@ class Gs1ParserService {
   }
 
   // ---------------------------------------------------------------- step 1
+
+  /// Retail EAN/UPC never encodes a lot. Every other symbology may.
+  bool _acceptsStandaloneBatch(String? barcodeFormat) {
+    if (barcodeFormat == kFormatEan13 || barcodeFormat == kFormatEan8) {
+      return false;
+    }
+    if (barcodeFormat == 'ean13' || barcodeFormat == 'ean8') return false;
+    return true;
+  }
 
   String? _stripPrefix(String s) {
     for (final prefix in kSymbologyIdentifiers) {

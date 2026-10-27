@@ -127,4 +127,30 @@ void main() {
       expect(pickCentermost([at('only', 0.9, 0.9)])!.rawValue, 'only');
     });
   });
+
+  group('pickBatchBarcode', () {
+    DetectedBarcode at(String v, double x, double y, {String format = 'code128'}) =>
+        DetectedBarcode(
+          rawValue: v,
+          format: format,
+          centerX: x,
+          centerY: y,
+        );
+
+    test('prefers a lot code over a retail EAN', () {
+      final picked = pickBatchBarcode([
+        at('8901234567890', 0.5, 0.5, format: 'ean13'),
+        at('BN2024X981', 0.2, 0.2, format: 'code39'),
+      ]);
+      expect(picked!.rawValue, 'BN2024X981');
+    });
+
+    test('prefers a GS1 payload that carries AI 10', () {
+      final picked = pickBatchBarcode([
+        at('https://example.com', 0.5, 0.5, format: 'qrCode'),
+        at('01089012345678901726123110BN2024X981', 0.8, 0.8),
+      ]);
+      expect(picked!.rawValue, '01089012345678901726123110BN2024X981');
+    });
+  });
 }

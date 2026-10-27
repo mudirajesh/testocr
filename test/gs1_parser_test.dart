@@ -342,6 +342,45 @@ void main() {
     expect(r.isValid, isTrue);
   });
 
+  test('a standalone Code 39 lot code is the batch number', () {
+    final r = parser.parse('BN2024X981', barcodeFormat: 'code39');
+    expect(r.batchNumber, 'BN2024X981');
+    expect(r.gtin, isNull);
+    expect(r.isGs1, isTrue);
+    expect(r.isValid, isTrue);
+  });
+
+  test('a lot starting with 10 is kept whole, not walked as AI 10', () {
+    final r = parser.parse('10ABC123', barcodeFormat: 'code39');
+    expect(r.batchNumber, '10ABC123');
+    expect(r.gtin, isNull);
+    expect(r.isValid, isTrue);
+  });
+
+  test('GS1 concatenated data is not rewritten as a standalone lot', () {
+    final r = parser.parse(
+      '01089012345678901726123110BN2024X981',
+      barcodeFormat: 'dataMatrix',
+    );
+    expect(r.gtin, validGtin);
+    expect(r.expiryYymmdd, '261231');
+    expect(r.batchNumber, 'BN2024X981');
+    expect(r.isValid, isTrue);
+  });
+
+  test('a standalone ITF lot code is the batch number', () {
+    final r = parser.parse('LOT-2024A', barcodeFormat: 'itf');
+    expect(r.batchNumber, 'LOT-2024A');
+    expect(r.isValid, isTrue);
+  });
+
+  test('a URL is still unrecognised', () {
+    final r = parser.parse('https://example.com', barcodeFormat: 'qrCode');
+    expect(r.batchNumber, isNull);
+    expect(r.isGs1, isFalse);
+    expect(r.errors, contains('Unrecognised barcode format'));
+  });
+
   test('parse never throws on hostile input', () {
     for (final raw in [
       '01',
