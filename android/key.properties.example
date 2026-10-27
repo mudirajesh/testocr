@@ -1,0 +1,8 @@
+# Copy this file to android/key.properties and fill it in. key.properties is
+# git-ignored. NEVER commit it or the keystore.
+#
+# storeFile: absolute path to the keystore, or a path relative to android/app/
+storePassword=<the keystore password>
+keyPassword=<the key password>
+keyAlias=upload
+storeFile=/Users/<you>/keystores/gs1scan-upload.jks

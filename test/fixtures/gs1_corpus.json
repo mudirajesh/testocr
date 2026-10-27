@@ -1,0 +1,718 @@
+{
+  "_readme": [
+    "GS1 parser regression corpus. Loaded by test/gs1_corpus_test.dart.",
+    "Each case: name, raw, optional barcodeFormat, expected {gtin,batch,expiry,serial} (null = must be absent), valid.",
+    "expected may also hold productionDate and count.",
+    "Optional per case: warnings / errors (substrings that must appear), ambiguousBatchIndices,",
+    "corrections (expected number of recorded corrections), preserveBatchSpaces, notes.",
+    "\"raw\" is JSON: write the GS control character as \\u001d.",
+    "GTINs in this file were generated with the GS1 modulo-10 check digit, not typed by hand.",
+    "",
+    "ADDING REAL STRINGS FROM THE CLIENT PACKS",
+    "1. Run a debug build and scan the pack. The log prints: SCAN raw: <value, with <GS> for the separator> (format).",
+    "2. Copy the raw value. Replace each <GS> with \\u001d (the parser accepts <GS> too, but \\u001d is the real character).",
+    "3. Add a case with the values PRINTED ON THE PACK as \"expected\". Never copy the parser output as the expectation.",
+    "4. Run: flutter test test/gs1_corpus_test.dart",
+    "Cases starting with \"KNOWN LIMITATION\" document behaviour that cannot be fixed by the parser alone."
+  ],
+  "cases": [
+    {
+      "name": "standard: GS between variable fields",
+      "raw": "01089012345678901726123110BN2024X981\u001d21SER00001",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "BN2024X981",
+        "expiry": "261231",
+        "serial": "SER00001"
+      },
+      "valid": true
+    },
+    {
+      "name": "standard: batch before expiry, GS terminated",
+      "raw": "010890123456789010LOT-A2B459X\u001d17270630219X8Y7Z",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "LOT-A2B459X",
+        "expiry": "270630",
+        "serial": "9X8Y7Z"
+      },
+      "valid": true
+    },
+    {
+      "name": "standard: batch is the last field",
+      "raw": "01089012345678901726123110BN2024X981",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "BN2024X981",
+        "expiry": "261231",
+        "serial": null
+      },
+      "valid": true
+    },
+    {
+      "name": "prefix ]d2 (DataMatrix)",
+      "raw": "]d201089012345678901726123110BN2024X981",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "BN2024X981",
+        "expiry": "261231",
+        "serial": null
+      },
+      "valid": true
+    },
+    {
+      "name": "prefix ]C1 (GS1-128)",
+      "raw": "]C101089012345678901726123110BN2024X981\u001d21S1",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "BN2024X981",
+        "expiry": "261231",
+        "serial": "S1"
+      },
+      "valid": true
+    },
+    {
+      "name": "prefix ]Q3 (QR)",
+      "raw": "]Q301030012345678921728053110QR-77",
+      "expected": {
+        "gtin": "03001234567892",
+        "batch": "QR-77",
+        "expiry": "280531",
+        "serial": null
+      },
+      "valid": true
+    },
+    {
+      "name": "literal text \\x1D separator",
+      "raw": "01089012345678901726123110BN2024X981\\x1D21SER9",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "BN2024X981",
+        "expiry": "261231",
+        "serial": "SER9"
+      },
+      "valid": true
+    },
+    {
+      "name": "tilde ~ separator",
+      "raw": "01089012345678901726123110BN2024X981~21SER9",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "BN2024X981",
+        "expiry": "261231",
+        "serial": "SER9"
+      },
+      "valid": true
+    },
+    {
+      "name": "<GS> separator",
+      "raw": "01089012345678901726123110BN2024X981<GS>21SER9",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "BN2024X981",
+        "expiry": "261231",
+        "serial": "SER9"
+      },
+      "valid": true
+    },
+    {
+      "name": "[GS] separator",
+      "raw": "01089012345678901726123110BN2024X981[GS]21SER9",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "BN2024X981",
+        "expiry": "261231",
+        "serial": "SER9"
+      },
+      "valid": true
+    },
+    {
+      "name": "missing FNC1 after a 20-char batch splits at max length",
+      "raw": "010890123456789010B123456789012345678921SER1",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "B1234567890123456789",
+        "expiry": null,
+        "serial": "SER1"
+      },
+      "valid": true,
+      "warnings": [
+        "possible missing FNC1 separator"
+      ]
+    },
+    {
+      "name": "KNOWN LIMITATION: missing FNC1 after a short batch is not split",
+      "raw": "010890123456789010ABC12321SER1",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "ABC12321SER1",
+        "expiry": null,
+        "serial": null
+      },
+      "valid": true,
+      "notes": "A variable field shorter than its maximum cannot be told apart from a longer batch; the heuristic only splits at the maximum length."
+    },
+    {
+      "name": "GTIN only",
+      "raw": "0108901234567890",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": null,
+        "expiry": null,
+        "serial": null
+      },
+      "valid": true,
+      "warnings": [
+        "No batch/lot number"
+      ]
+    },
+    {
+      "name": "several fixed fields back to back",
+      "raw": "0108901234567890112601011727010110BN1",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "BN1",
+        "expiry": "270101",
+        "serial": null
+      },
+      "valid": true
+    },
+    {
+      "name": "production date and count parsed",
+      "raw": "0108901234567890112601013012",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": null,
+        "expiry": null,
+        "serial": null,
+        "productionDate": "260101",
+        "count": "12"
+      },
+      "valid": true
+    },
+    {
+      "name": "whitespace around the whole string",
+      "raw": "  01089012345678901726123110BN2024X981\n",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "BN2024X981",
+        "expiry": "261231",
+        "serial": null
+      },
+      "valid": true
+    },
+    {
+      "name": "human readable parentheses",
+      "raw": "(01)08901234567890(17)261231(10)BN2024X981",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "BN2024X981",
+        "expiry": "261231",
+        "serial": null
+      },
+      "valid": true
+    },
+    {
+      "name": "human readable with serial",
+      "raw": "(01)03001234567892(10)LOT-98421-K(17)280229(21)ABC123",
+      "expected": {
+        "gtin": "03001234567892",
+        "batch": "LOT-98421-K",
+        "expiry": "280229",
+        "serial": "ABC123"
+      },
+      "valid": true
+    },
+    {
+      "name": "human readable keeps ~ as a literal",
+      "raw": "(01)08901234567890(10)BN~7",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "BN~7",
+        "expiry": null,
+        "serial": null
+      },
+      "valid": true,
+      "warnings": [
+        "unusual characters"
+      ]
+    },
+    {
+      "name": "batch with letter O and zero is flagged, not changed",
+      "raw": "010890123456789010BO2024O98",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "BO2024O98",
+        "expiry": null,
+        "serial": null
+      },
+      "valid": true,
+      "warnings": [
+        "can be confused (O/0)"
+      ],
+      "ambiguousBatchIndices": [
+        1,
+        3,
+        6
+      ],
+      "corrections": []
+    },
+    {
+      "name": "batch of zeros and Os",
+      "raw": "010890123456789010000OOO",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "000OOO",
+        "expiry": null,
+        "serial": null
+      },
+      "valid": true,
+      "warnings": [
+        "can be confused (O/0)"
+      ],
+      "ambiguousBatchIndices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "name": "batch with slash warns only",
+      "raw": "010890123456789010LOT/2024",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "LOT/2024",
+        "expiry": null,
+        "serial": null
+      },
+      "valid": true,
+      "warnings": [
+        "unusual characters"
+      ]
+    },
+    {
+      "name": "batch with underscore warns only",
+      "raw": "010541234500012910LOT_2024_B",
+      "expected": {
+        "gtin": "05412345000129",
+        "batch": "LOT_2024_B",
+        "expiry": null,
+        "serial": null
+      },
+      "valid": true,
+      "warnings": [
+        "unusual characters"
+      ]
+    },
+    {
+      "name": "batch with dot and dash is clean",
+      "raw": "010890123456789010A.B-C.1",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "A.B-C.1",
+        "expiry": null,
+        "serial": null
+      },
+      "valid": true
+    },
+    {
+      "name": "20-character batch is valid",
+      "raw": "010890123456789010ABCDEFGHIJ0123456789",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "ABCDEFGHIJ0123456789",
+        "expiry": null,
+        "serial": null
+      },
+      "valid": true,
+      "ambiguousBatchIndices": [
+        10
+      ]
+    },
+    {
+      "name": "21-character batch ended by GS is an error",
+      "raw": "010890123456789010BBBBBBBBBBBBBBBBBBBBB\u001d21S1",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "BBBBBBBBBBBBBBBBBBBBB",
+        "expiry": null,
+        "serial": "S1"
+      },
+      "valid": false,
+      "errors": [
+        "invalid batch"
+      ]
+    },
+    {
+      "name": "internal batch space is stripped by default",
+      "raw": "010890123456789010BN 2024",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "BN2024",
+        "expiry": null,
+        "serial": null
+      },
+      "valid": true
+    },
+    {
+      "name": "internal batch space is kept when asked",
+      "raw": "010890123456789010BN 2024",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "BN 2024",
+        "expiry": null,
+        "serial": null
+      },
+      "valid": true,
+      "warnings": [
+        "unusual characters"
+      ],
+      "preserveBatchSpaces": true
+    },
+    {
+      "name": "alphanumeric serial",
+      "raw": "010890123456789010LOT1\u001d21ABC-123",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "LOT1",
+        "expiry": null,
+        "serial": "ABC-123"
+      },
+      "valid": true
+    },
+    {
+      "name": "serial and batch are never letter-corrected",
+      "raw": "010890123456789010BOIL\u001d21S1B2",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "BOIL",
+        "expiry": null,
+        "serial": "S1B2"
+      },
+      "valid": true,
+      "ambiguousBatchIndices": [
+        1
+      ],
+      "corrections": []
+    },
+    {
+      "name": "concatenated string over 200 characters with repeated AIs",
+      "raw": "010890123456789010BATCH000\u001d21SER000\u001d010890123456789010BATCH001\u001d21SER001\u001d010890123456789010BATCH002\u001d21SER002\u001d010890123456789010BATCH003\u001d21SER003\u001d010890123456789010BATCH004\u001d21SER004\u001d010890123456789010BATCH005\u001d21SER005\u001d",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "BATCH000",
+        "expiry": null,
+        "serial": "SER000"
+      },
+      "valid": true,
+      "warnings": [
+        "Duplicate AI 10"
+      ],
+      "notes": "Fields are kept in order; the first occurrence of each AI is what the app uses."
+    },
+    {
+      "name": "GTIN with letter O is corrected",
+      "raw": "01O89O1234567890",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": null,
+        "expiry": null,
+        "serial": null
+      },
+      "valid": true,
+      "warnings": [
+        "No batch/lot number"
+      ],
+      "notes": "Every correction is recorded."
+    },
+    {
+      "name": "GTIN with o, I and l is corrected",
+      "raw": "01oIl01234567891",
+      "expected": {
+        "gtin": "01101234567891",
+        "batch": null,
+        "expiry": null,
+        "serial": null
+      },
+      "valid": true,
+      "warnings": [
+        "No batch/lot number"
+      ]
+    },
+    {
+      "name": "expiry with letter O is corrected",
+      "raw": "0108901234567890172612O1",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": null,
+        "expiry": "261201",
+        "serial": null
+      },
+      "valid": true,
+      "warnings": [
+        "No batch/lot number"
+      ]
+    },
+    {
+      "name": "GTIN with embedded spaces",
+      "raw": "010890 1234 5678 90",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": null,
+        "expiry": null,
+        "serial": null
+      },
+      "valid": true,
+      "warnings": [
+        "No batch/lot number"
+      ]
+    },
+    {
+      "name": "S is replaced by 5 only because it fixes the check digit",
+      "raw": "01089012S4567894",
+      "expected": {
+        "gtin": "08901254567894",
+        "batch": null,
+        "expiry": null,
+        "serial": null
+      },
+      "valid": true,
+      "warnings": [
+        "No batch/lot number"
+      ]
+    },
+    {
+      "name": "S is left alone when replacing it does not help",
+      "raw": "01089012S4567895",
+      "expected": {
+        "gtin": "089012S4567895",
+        "batch": null,
+        "expiry": null,
+        "serial": null
+      },
+      "valid": false,
+      "errors": [
+        "GTIN must be 14 digits"
+      ],
+      "corrections": []
+    },
+    {
+      "name": "expiry day 00 means end of month",
+      "raw": "01089012345678901726120010B1",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "B1",
+        "expiry": "261200",
+        "serial": null
+      },
+      "valid": true
+    },
+    {
+      "name": "expiry leap day 280229 is valid",
+      "raw": "01089012345678901728022910B1",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "B1",
+        "expiry": "280229",
+        "serial": null
+      },
+      "valid": true
+    },
+    {
+      "name": "expiry 270229 (not a leap year) is invalid",
+      "raw": "01089012345678901727022910B1",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "B1",
+        "expiry": "270229",
+        "serial": null
+      },
+      "valid": false,
+      "errors": [
+        "AI 17: invalid date"
+      ]
+    },
+    {
+      "name": "expiry month 13 is invalid",
+      "raw": "01089012345678901726130110B1",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "B1",
+        "expiry": "261301",
+        "serial": null
+      },
+      "valid": false,
+      "errors": [
+        "AI 17: invalid date"
+      ]
+    },
+    {
+      "name": "GTIN with a wrong check digit",
+      "raw": "010890123456789110B1",
+      "expected": {
+        "gtin": "08901234567891",
+        "batch": "B1",
+        "expiry": null,
+        "serial": null
+      },
+      "valid": false,
+      "errors": [
+        "GTIN check digit invalid"
+      ]
+    },
+    {
+      "name": "truncated GTIN",
+      "raw": "0189012345",
+      "expected": {
+        "gtin": "89012345",
+        "batch": null,
+        "expiry": null,
+        "serial": null
+      },
+      "valid": false,
+      "errors": [
+        "truncated"
+      ]
+    },
+    {
+      "name": "leading junk before a valid element string",
+      "raw": "XX010890123456789010B1",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "B1",
+        "expiry": null,
+        "serial": null
+      },
+      "valid": true,
+      "warnings": [
+        "Unknown or unparsable data at position 0"
+      ]
+    },
+    {
+      "name": "additional product id (240)",
+      "raw": "0108901234567890240PRODUCT-12\u001d10B1",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "B1",
+        "expiry": null,
+        "serial": null
+      },
+      "valid": true
+    },
+    {
+      "name": "national healthcare number (710)",
+      "raw": "0108901234567890710123456\u001d10B1",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": "B1",
+        "expiry": null,
+        "serial": null
+      },
+      "valid": true
+    },
+    {
+      "name": "retail EAN-13",
+      "raw": "8901234567890",
+      "barcodeFormat": "EAN-13",
+      "expected": {
+        "gtin": "08901234567890",
+        "batch": null,
+        "expiry": null,
+        "serial": null
+      },
+      "valid": true,
+      "warnings": [
+        "Retail barcode"
+      ]
+    },
+    {
+      "name": "retail EAN-8",
+      "raw": "96385074",
+      "barcodeFormat": "EAN-8",
+      "expected": {
+        "gtin": "00000096385074",
+        "batch": null,
+        "expiry": null,
+        "serial": null
+      },
+      "valid": true,
+      "warnings": [
+        "Retail barcode"
+      ]
+    },
+    {
+      "name": "retail EAN-13 with a wrong check digit",
+      "raw": "8901234567891",
+      "barcodeFormat": "EAN-13",
+      "expected": {
+        "gtin": "08901234567891",
+        "batch": null,
+        "expiry": null,
+        "serial": null
+      },
+      "valid": false,
+      "errors": [
+        "GTIN check digit invalid"
+      ]
+    },
+    {
+      "name": "non-GS1 URL",
+      "raw": "https://example.com/abc",
+      "expected": {
+        "gtin": null,
+        "batch": null,
+        "expiry": null,
+        "serial": null
+      },
+      "valid": false,
+      "errors": [
+        "Unrecognised barcode format"
+      ]
+    },
+    {
+      "name": "non-GS1 plain text",
+      "raw": "HELLO WORLD",
+      "expected": {
+        "gtin": null,
+        "batch": null,
+        "expiry": null,
+        "serial": null
+      },
+      "valid": false,
+      "errors": [
+        "Unrecognised barcode format"
+      ]
+    },
+    {
+      "name": "empty string",
+      "raw": "",
+      "expected": {
+        "gtin": null,
+        "batch": null,
+        "expiry": null,
+        "serial": null
+      },
+      "valid": false,
+      "errors": [
+        "Empty barcode"
+      ]
+    },
+    {
+      "name": "whitespace only",
+      "raw": "   ",
+      "expected": {
+        "gtin": null,
+        "batch": null,
+        "expiry": null,
+        "serial": null
+      },
+      "valid": false,
+      "errors": [
+        "Empty barcode"
+      ]
+    }
+  ]
+}

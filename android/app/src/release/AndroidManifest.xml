@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Release builds have NO network access. A library (Google's ML Kit
+         telemetry transport, datatransport) adds INTERNET through the manifest
+         merger; it is removed here so scan data can never leave the device. The
+         debug and profile manifests add INTERNET back for hot reload only. -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+</manifest>
